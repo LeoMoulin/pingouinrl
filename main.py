@@ -148,12 +148,11 @@ class Environment:
 def learn(qtable, env, alpha, gamma, epsilon):
     steps = 0
     res = ""
-    n_visits = defaultdict(int)
+
     while res != "win" and steps <= 100:
         possible_moves = env.get_possible_moves(env.agent_pos)
 
-        # Garde l'état avant de jouer en mémoire
-        #???????????????????????????????????????????
+        # Garde l'état avant de jouer en mémoire => erreur sans le copy car dcp ca prend la ref et ca reste l'état courant alors qu'on veut l'état avant de jouer
         s = env.agent_pos.copy()
 
         # Calcule et joue le prochain coup
@@ -161,7 +160,6 @@ def learn(qtable, env, alpha, gamma, epsilon):
         res = env.move(next_move)
 
         steps += 1
-        n_visits[tuple(env.agent_pos)] += 1
 
         # Choppe le reward
         if res == "win":
@@ -171,13 +169,14 @@ def learn(qtable, env, alpha, gamma, epsilon):
         else:
             reward = 0
 
-        reward += -math.sqrt(n_visits[tuple(env.agent_pos)]) - steps * 0.01
+        reward += - steps * 0.01
 
         # Donne le meilleur q_val possible à partir de s'
         current_q = qtable.table[(tuple(s), next_move)]
         bestfuture_qval = max([qtable.table[(tuple(env.agent_pos), a_prime)] for a_prime in env.get_possible_moves(env.agent_pos)])
 
         qtable.table[(tuple(s), next_move)] = (1 - alpha) * current_q + alpha * (reward + gamma * bestfuture_qval)
+
     return steps, res
 
 
@@ -191,8 +190,8 @@ alpha = 0.9
 gamma = 0.95
 epsilon = 1.0
 
-# Plays 1000 games to learn
-for i in range(0, 2500):
+# Plays games to learn
+for i in range(0, 5000):
     r = learn(qtable, env, alpha, gamma, epsilon)[1]
     if (r == "win"):
         WIN_LEARNING_COUNT += 1
@@ -204,7 +203,7 @@ print("#won during learning is ")
 print(WIN_LEARNING_COUNT)
 
 env.agent_pos = [0, 0]
-
+end = False
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
@@ -212,7 +211,7 @@ while running:
 
         # Détermine la prochaine action
         if event.type == pygame.KEYDOWN:
-            if event.key == pygame.K_SPACE:
+            if event.key == pygame.K_SPACE and not end:
                 possible_moves = env.get_possible_moves(env.agent_pos)
 
                 # Garde l'état avant de jouer en mémoire
@@ -220,7 +219,16 @@ while running:
 
                 # Calcule et joue le prochain coup
                 next_move = qtable.next_move(env.agent_pos, possible_moves, epsilon)
-                env.move(next_move)
+                res = env.move(next_move)
+
+                #Petit code pas très propre pour voir le pingouin aller sur l'igloo au lieu de reset direct sans tout changer
+                if res == "win":
+                    print("HE WON")
+                    end = True
+                    env.agent_pos = env.goal.copy()
+            else:
+                end = False
+                env.agent_pos = [0,0]
 
     env.draw(screen)
     pygame.display.flip()
