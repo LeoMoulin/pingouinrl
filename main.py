@@ -1,4 +1,5 @@
 import math
+from collections import defaultdict
 
 import pygame
 import random
@@ -8,6 +9,7 @@ import itertools
 GRID_SIZE = 6         # 6x6
 CELL_SIZE = 100       # taille d'une case en pixels
 WIDTH = HEIGHT = GRID_SIZE * CELL_SIZE
+WIN_LEARNING_COUNT = 0
 
 # Couleurs
 WHITE = (255, 255, 255)
@@ -147,9 +149,7 @@ class Environment:
 def learn(qtable,env, alpha, gamma, epsilon):
     steps = 0
     res = ""
-    history = [[0,0]]
-    explored = [(0,0)]
-
+    n_visits = defaultdict(int)
     while res != "win" and steps <= 100:
         possible_moves = env.get_possible_moves(env.agent_pos)
 
@@ -160,31 +160,24 @@ def learn(qtable,env, alpha, gamma, epsilon):
         next_move = qtable.next_move(env.agent_pos, possible_moves, epsilon)
         res = env.move(next_move)
         steps += 1
-
-        history.append([env.agent_pos[0], env.agent_pos[1]])
+        n_visits[tuple(env.agent_pos)] += 1
 
         # Choppe le reward
         if res == "win":
-            reward = 5
-            #print("win")
+            reward = 10
         elif res == "water":
-            reward = -10
-        elif steps == 100:
-            reward = -5
-        elif history[steps-2] == env.agent_pos:
-            reward = -8
+            reward = -1
         else:
-            if tuple(env.agent_pos) not in explored:
-                reward = 2
-                explored.append(tuple(env.agent_pos))
-            else:
-                reward = 0
+            reward = 0
+
+        reward += -math.sqrt(n_visits[tuple(env.agent_pos)])
 
         # Donne le meilleur q_val possible à partir de s'
         current_q = qtable.table[(listtotuple(s), next_move)]
         bestfuture_qval = max([qtable.table[(listtotuple(env.agent_pos), a_prime)] for a_prime in env.get_possible_moves(env.agent_pos)])
         qtable.table[(listtotuple(s), next_move)] = current_q + alpha * (reward + (gamma * bestfuture_qval) - current_q)
-
+    print(steps)
+    return (steps,res)
 
 # --- Boucle principale ---
 env = Environment(GRID_SIZE)
@@ -192,15 +185,20 @@ running = True
 
 s = [x for x in range(env.size)]
 qtable = q_table(list(itertools.product(s,s)), ["UP", "DOWN", "LEFT", "RIGHT"])
-alpha = 0.3
-gamma = 0.2
+alpha = 0.1
+gamma = 0.95
 epsilon = 1.0
 
 #Plays 1000 games to learn
-for i in range(0, 100000):
-    learn(qtable, env, alpha, gamma, epsilon)
-    epsilon = 0.01 + (1-0.001)*(math.exp(-0.0001 * i))
-    #print(epsilon)
+for i in range(0, 50000):
+    r = learn(qtable, env, alpha, gamma, epsilon)[1]
+    if (r == "win"):
+        WIN_LEARNING_COUNT += 1
+    epsilon = max(0.1, 1-0.001*i)
+    alpha = max(0.05, alpha * 0.999)
+    print(i)
+print("#won is ")
+print(WIN_LEARNING_COUNT)
 env.reset()
 print([x for x in qtable.table.items() if x[0][0] == (0,0)])
 while running:
@@ -220,17 +218,6 @@ while running:
                 next_move = qtable.next_move(env.agent_pos, possible_moves, epsilon)
                 env.move(next_move)
                 print([x for x in qtable.table.items() if x[0][0] == tuple(env.agent_pos)])
-                #Choppe le reward
-                if env.agent_pos == [5,5]:
-                    reward = 1
-                elif env.agent_pos == [0,0]:
-                    reward = -1
-                else:
-                    reward = 0
-
-                #Donne le meilleur q_val possible à partir de s'
-                #best_future_qval = max([qtable.table[(listtotuple(env.agent_pos), a_prime)] for a_prime in env.get_possible_moves(env.agent_pos)])
-                #qtable.table[(listtotuple(s), next_move)] = qtable.table[(listtotuple(s), next_move)] + alpha*(reward + gamma*best_future_qval - qtable.table[(listtotuple(s), next_move)])
 
     env.draw(screen)
     pygame.display.flip()
