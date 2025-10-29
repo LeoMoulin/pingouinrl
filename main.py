@@ -2,12 +2,12 @@ import math
 from collections import defaultdict
 
 import pygame
-import random
+from random import choices, randint
 import itertools
 
 # --- Paramètres de base ---
-GRID_SIZE = 6         # 6x6
-CELL_SIZE = 100       # taille d'une case en pixels
+GRID_SIZE = 6  # 6x6
+CELL_SIZE = 100  # taille d'une case en pixels
 WIDTH = HEIGHT = GRID_SIZE * CELL_SIZE
 WIN_LEARNING_COUNT = 0
 
@@ -32,40 +32,38 @@ penguin_img = pygame.transform.scale(penguin_img, (CELL_SIZE, CELL_SIZE))
 water_img = pygame.transform.scale(water_img, (CELL_SIZE, CELL_SIZE))
 igloo_img = pygame.transform.scale(igloo_img, (CELL_SIZE, CELL_SIZE))
 
-def listtotuple(l):
-    return l[0], l[1]
 
-#Gestion de la q-table
+# Gestion de la q-table
 class q_table:
-    #Init la q-table avec des valeurs random
+    # Init la q-table avec des valeurs random
     def __init__(self, states, actions):
-        #Dico de la forme {((x,y),action):q_value}
+        # Dico de la forme {((x,y),action):q_value}
         self.table = {}
         self.actions = actions
 
         for state in states:
             for action in actions:
-                self.table[(listtotuple(state), action)] = 0.0
+                self.table[(tuple(state), action)] = 0.0
 
-    #Renvoie le prochain état selon la politique epsilon greedy
+    # Renvoie le prochain état selon la politique epsilon greedy
     def next_move(self, state, actions, epsilon):
-        x = random.choices([0,1], weights=[1-epsilon, epsilon])[0]
+        x = choices([0, 1], weights=[1 - epsilon, epsilon])[0]
 
-        #Prendre le plus grand Q
+        # Prendre le plus grand Q
         if x == 0:
-            best = self.table[(listtotuple(state), actions[0])]
+            best = self.table[(tuple(state), actions[0])]
             best_action = actions[0]
 
             for action in actions:
-                temp = self.table[(listtotuple(state), action)]
+                temp = self.table[(tuple(state), action)]
                 if temp > best:
                     best = temp
                     best_action = action
             return best_action
         else:
-            #print("proc")
-            x = random.randint(0, len(actions)-1)
+            x = randint(0, len(actions) - 1)
             return actions[x]
+
 
 # --- Création de la grille ---
 class Environment:
@@ -77,15 +75,15 @@ class Environment:
         self.agent_pos = [0, 0]
         # positions des flaques (éviter le coin de départ et celui de l’igloo)
         self.waters = []
-        for _ in range(random.randint(5, 8)):
-            x, y = random.randint(0, self.size-1), random.randint(0, self.size-1)
-            if [x, y] not in ([0, 0], [self.size-1, self.size-1]):
+        for _ in range(randint(5, 8)):
+            x, y = randint(0, self.size - 1), randint(0, self.size - 1)
+            if [x, y] not in ([0, 0], [self.size - 1, self.size - 1]):
                 self.waters.append([x, y])
-        self.goal = [self.size-1, self.size-1]
+        self.goal = [self.size - 1, self.size - 1]
 
     def is_water(self):
-        if [self.agent_pos[0],self.agent_pos[1]] in self.waters:
-            self.agent_pos = [0,0]
+        if [self.agent_pos[0], self.agent_pos[1]] in self.waters:
+            self.agent_pos = [0, 0]
             return True
         return False
 
@@ -145,8 +143,9 @@ class Environment:
 
         return moves
 
-#plays a game to learn
-def learn(qtable,env, alpha, gamma, epsilon):
+
+# plays a game to learn
+def learn(qtable, env, alpha, gamma, epsilon):
     steps = 0
     res = ""
     n_visits = defaultdict(int)
@@ -154,70 +153,74 @@ def learn(qtable,env, alpha, gamma, epsilon):
         possible_moves = env.get_possible_moves(env.agent_pos)
 
         # Garde l'état avant de jouer en mémoire
-        s = env.agent_pos
+        #???????????????????????????????????????????
+        s = env.agent_pos.copy()
 
         # Calcule et joue le prochain coup
         next_move = qtable.next_move(env.agent_pos, possible_moves, epsilon)
         res = env.move(next_move)
+
         steps += 1
         n_visits[tuple(env.agent_pos)] += 1
 
         # Choppe le reward
         if res == "win":
-            reward = 10
+            reward = 1
         elif res == "water":
             reward = -1
         else:
             reward = 0
 
-        reward += -math.sqrt(n_visits[tuple(env.agent_pos)])
+        reward += -math.sqrt(n_visits[tuple(env.agent_pos)]) - steps * 0.01
 
         # Donne le meilleur q_val possible à partir de s'
-        current_q = qtable.table[(listtotuple(s), next_move)]
-        bestfuture_qval = max([qtable.table[(listtotuple(env.agent_pos), a_prime)] for a_prime in env.get_possible_moves(env.agent_pos)])
-        qtable.table[(listtotuple(s), next_move)] = current_q + alpha * (reward + (gamma * bestfuture_qval) - current_q)
-    print(steps)
-    return (steps,res)
+        current_q = qtable.table[(tuple(s), next_move)]
+        bestfuture_qval = max([qtable.table[(tuple(env.agent_pos), a_prime)] for a_prime in env.get_possible_moves(env.agent_pos)])
+
+        qtable.table[(tuple(s), next_move)] = (1 - alpha) * current_q + alpha * (reward + gamma * bestfuture_qval)
+    return steps, res
+
 
 # --- Boucle principale ---
 env = Environment(GRID_SIZE)
 running = True
 
 s = [x for x in range(env.size)]
-qtable = q_table(list(itertools.product(s,s)), ["UP", "DOWN", "LEFT", "RIGHT"])
-alpha = 0.1
+qtable = q_table(list(itertools.product(s, s)), ["UP", "DOWN", "LEFT", "RIGHT"])
+alpha = 0.9
 gamma = 0.95
 epsilon = 1.0
 
-#Plays 1000 games to learn
-for i in range(0, 50000):
+# Plays 1000 games to learn
+for i in range(0, 2500):
     r = learn(qtable, env, alpha, gamma, epsilon)[1]
     if (r == "win"):
         WIN_LEARNING_COUNT += 1
-    epsilon = max(0.1, 1-0.001*i)
+
+    epsilon = max(0.1, 1 - 0.001 * i)
     alpha = max(0.05, alpha * 0.999)
-    print(i)
-print("#won is ")
+
+print("#won during learning is ")
 print(WIN_LEARNING_COUNT)
-env.reset()
-print([x for x in qtable.table.items() if x[0][0] == (0,0)])
+
+env.agent_pos = [0, 0]
+
 while running:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        #Détermine la prochaine action
+        # Détermine la prochaine action
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
                 possible_moves = env.get_possible_moves(env.agent_pos)
 
-                #Garde l'état avant de jouer en mémoire
+                # Garde l'état avant de jouer en mémoire
                 s = env.agent_pos
 
-                #Calcule et joue le prochain coup
+                # Calcule et joue le prochain coup
                 next_move = qtable.next_move(env.agent_pos, possible_moves, epsilon)
                 env.move(next_move)
-                print([x for x in qtable.table.items() if x[0][0] == tuple(env.agent_pos)])
 
     env.draw(screen)
     pygame.display.flip()
